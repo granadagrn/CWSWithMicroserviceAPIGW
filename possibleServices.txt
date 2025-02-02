@@ -1,0 +1,12 @@
+1.Customer Service – Handles customer-related operations.
+2.Address Service – Manages address-related operations.
+3.Authentication Service – Handles authentication and authorization with Keycloak.
+4.API Gateway – A central entry point to route requests to appropriate services.
+5.Logging Service - Prepared but not working yet - check later logging-service
+
+
+
+Additional Suggestions:
+If you are using multiple microservices, you may want to set up:
+1.Spring Cloud Config Server: To manage configurations centrally.
+2.API Gateway: For routing and load balancing between microservices.
