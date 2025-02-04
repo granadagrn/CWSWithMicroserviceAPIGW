@@ -36,4 +36,19 @@ public class AddressService {
     public List<Address> getAddressesByCustomerId(Long customerId) {
         return addressRepository.findByCustomerId(customerId);
     }
+
+    public List<Address> getAddresses() {
+        return addressRepository.findAll();
+    }
+
+    public boolean deleteAddressesByCustomerId(Long customerId) {
+        List<Address> addresses = addressRepository.findByCustomerId(customerId);
+
+        if (addresses.isEmpty()) {
+            return false;
+        }
+
+        addressRepository.deleteAll(addresses);
+        return true;
+    }
 }

@@ -12,6 +12,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.RestTemplate;
 
@@ -29,8 +30,11 @@ public class CustomerController {
     private final CustomerService customerService;
     private final RestTemplate restTemplate;
 
-    @Value("${address-service.service.url}")
-    private String addressServiceUrl;
+    //@Value("${address-service.service.url}")api-gateway.service.url
+    //private String addressServiceUrl;
+
+    @Value("${api-gateway.service.url}")
+    private String apiGatewayServiceUrl;
 
     @Autowired
     public CustomerController(CustomerService customerService, RestTemplate restTemplate) {
@@ -38,7 +42,7 @@ public class CustomerController {
         this.restTemplate = restTemplate;
     }
 
-    @GetMapping
+    @GetMapping()
     public List<Customer> getCustomers() {
         //logger.info("getCustomers method starts in CustomerController");
         List<Customer> customers = customerService.getAllCustomers();
@@ -52,9 +56,30 @@ public class CustomerController {
         return customers;
     }
 
+    @DeleteMapping("/{id}")
+    public ResponseEntity<String> deleteCustomerByCustomerId (@PathVariable Long id) {
+        // Check if customer exists
+        Customer existingCustomer = customerService.getCustomerById(id);
+        if (existingCustomer == null) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Customer not found!");
+        }
+
+        // Delete customer addresses via address-service
+        boolean addressDeletionSuccess = deleteCustomerAddresses(id);
+        if (!addressDeletionSuccess) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Failed to delete customer addresses from address-service.");
+        }
+
+        // Delete customer from customer-service database
+        customerService.deleteCustomerById(id);
+
+        return ResponseEntity.ok("Customer and related addresses deleted successfully.");
+    }
+
     private List<AddressDTO> fetchCustomerAddresses(Long customerId) {
         //logger.info("fetchCustomerAddress method starts in CustomerController");
-        String tempServiceUrl = addressServiceUrl + "/customer/" + customerId;
+        String tempServiceUrl = apiGatewayServiceUrl + "/addresses/customer/" + customerId;
         //logger.info("The address-service url related with customerId is: " + tempServiceUrl);
         return restTemplate.exchange(
                 tempServiceUrl, HttpMethod.GET, null, new ParameterizedTypeReference<List<AddressDTO>>() {}
@@ -78,7 +103,7 @@ public class CustomerController {
 
     @GetMapping("/{customerId}/addresses")
     public List<AddressDTO> getCustomerAddresses(@PathVariable Long customerId) {
-        String tempServiceUrl = addressServiceUrl + "/customer/" + customerId;
+        String tempServiceUrl = apiGatewayServiceUrl + "/customer/" + customerId;
         return restTemplate.getForObject(tempServiceUrl, List.class);
     }
 
@@ -113,8 +138,9 @@ public class CustomerController {
     }
 
     private void sendAddressToAddressService(AddressDTO address) {
+        String tempUrl = apiGatewayServiceUrl + "/addresses";
         try {
-            restTemplate.postForObject(addressServiceUrl, address, AddressDTO.class);
+            restTemplate.postForObject(tempUrl, address, AddressDTO.class);
             System.out.println("Address sent successfully: " + address);
         } catch (HttpServerErrorException e) {
             System.err.println("Error from address-service: " + e.getResponseBodyAsString());
@@ -153,7 +179,7 @@ public class CustomerController {
 
     private void handleAddressUpdates(Long customerId, List<AddressDTO> updatedAddresses) {
         // Fetch existing addresses for the customer from address-service
-        String url = addressServiceUrl + "/customer/" + customerId;
+        String url = apiGatewayServiceUrl + "/customer/" + customerId;
         ResponseEntity<AddressDTO[]> response = restTemplate.getForEntity(url, AddressDTO[].class);
         List<AddressDTO> existingAddresses = Arrays.asList(response.getBody());
 
@@ -170,7 +196,7 @@ public class CustomerController {
 
         for (AddressDTO existingAddress : existingAddresses) {
             if (!updatedIds.contains(existingAddress.getId())) {
-                String deleteUrl = addressServiceUrl + "/" + existingAddress.getId();
+                String deleteUrl = apiGatewayServiceUrl + "/" + existingAddress.getId();
                 restTemplate.delete(deleteUrl);
             }
         }
@@ -184,7 +210,7 @@ public class CustomerController {
         for (AddressDTO updatedAddress : updatedAddresses) {
             if (updatedAddress.getId() == null && !existingAddressNames.contains(updatedAddress.getAddressName())) {
                 updatedAddress.setCustomerId(customerId);
-                restTemplate.postForObject(addressServiceUrl, updatedAddress, AddressDTO.class);
+                restTemplate.postForObject(apiGatewayServiceUrl, updatedAddress, AddressDTO.class);
             }
         }
     }
@@ -195,10 +221,33 @@ public class CustomerController {
                 if (updatedAddress.getId() != null &&
                         updatedAddress.getId().equals(existingAddress.getId()) &&
                         !updatedAddress.equals(existingAddress)) {
-                    String updateUrl = addressServiceUrl + "/" + existingAddress.getId();
+                    String updateUrl = apiGatewayServiceUrl + "/" + existingAddress.getId();
                     restTemplate.put(updateUrl, updatedAddress);
                 }
             }
+        }
+    }
+
+    private boolean deleteCustomerAddresses(Long customerId) {
+        String tempURL = apiGatewayServiceUrl + "/addresses/customer/" + customerId;
+
+        try {
+            ResponseEntity<Void> response = restTemplate.exchange(
+                    tempURL,  // URL
+                    HttpMethod.DELETE,  // HTTP Method
+                    null,               // requestEntity
+                    Void.class          // ResponseType
+            );
+            return true; // Addresses deleted successfully
+        } catch (HttpClientErrorException e) {
+            if (e.getStatusCode() == HttpStatus.NOT_FOUND) {
+                return true;  // No addresses found, consider it successful
+            }
+            System.err.println("Error deleting customer addresses: " + e.getMessage());
+            return false;
+        } catch (Exception e) {
+            System.err.println("Service unreachable or other error: " + e.getMessage());
+            return false;
         }
     }
 

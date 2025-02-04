@@ -64,6 +64,13 @@
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
         </dependency>
+
+        <dependency>
+            <groupId>jakarta.servlet</groupId>
+            <artifactId>jakarta.servlet-api</artifactId>
+            <version>6.0.0</version> <!-- or use the version matching your environment -->
+            <scope>provided</scope> <!-- since it's provided by the container in production -->
+        </dependency>
     </dependencies>
 
     <build>

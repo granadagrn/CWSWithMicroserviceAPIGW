@@ -32,8 +32,23 @@ public class AddressController {
         }
     }
 
+    @GetMapping
+    public ResponseEntity<List<Address>> getAddresses() {
+        return ResponseEntity.ok(addressService.getAddresses());
+    }
+
     @GetMapping("/customer/{customerId}")
     public ResponseEntity<List<Address>> getAddressesByCustomer(@PathVariable Long customerId) {
         return ResponseEntity.ok(addressService.getAddressesByCustomerId(customerId));
+    }
+
+    @DeleteMapping("/customer/{customerId}")
+    public ResponseEntity<String> deleteAddressesByCustomerId(@PathVariable Long customerId) {
+        boolean isDeleted = addressService.deleteAddressesByCustomerId(customerId);
+        if (isDeleted) {
+            return ResponseEntity.ok("Addresses deleted successfully.");
+        } else {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body("No addresses found for customerId: " + customerId);
+        }
     }
 }
