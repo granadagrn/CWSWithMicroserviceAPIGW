@@ -7,9 +7,9 @@ import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
-import org.springframework.http.HttpMethod;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
+import org.springframework.http.*;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.client.HttpClientErrorException;
@@ -81,9 +81,26 @@ public class CustomerController {
         //logger.info("fetchCustomerAddress method starts in CustomerController");
         String tempServiceUrl = apiGatewayServiceUrl + "/addresses/customer/" + customerId;
         //logger.info("The address-service url related with customerId is: " + tempServiceUrl);
-        return restTemplate.exchange(
-                tempServiceUrl, HttpMethod.GET, null, new ParameterizedTypeReference<List<AddressDTO>>() {}
-        ).getBody();
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("Authorization", "Bearer " + extractBearerToken()); // Add token to headers
+
+        HttpEntity<String> entity = new HttpEntity<>(headers);
+        ResponseEntity<List<AddressDTO>> response = restTemplate.exchange(
+                tempServiceUrl,
+                HttpMethod.GET,
+                entity,
+                new ParameterizedTypeReference<>() {}
+        );
+
+        return response.getBody();
+    }
+
+    private String extractBearerToken() {
+        var authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication instanceof JwtAuthenticationToken jwtToken) {
+            return jwtToken.getToken().getTokenValue();
+        }
+        return null;
     }
 
     // GET http://localhost:8082/customers/<customerID>
