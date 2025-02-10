@@ -4,7 +4,8 @@ import com.microservices.customerservice.dto.AddressDTO;
 import com.microservices.customerservice.entity.Customer;
 import com.microservices.customerservice.service.CustomerService;
 import jakarta.validation.Valid;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.*;
@@ -24,19 +25,24 @@ import java.util.stream.Collectors;
 @RequestMapping("/customers")
 @Validated
 public class CustomerController {
-    //private static final Logger logger = LoggerFactory.getLogger(CustomerService.class);
-
+    private static final Logger logger = LoggerFactory.getLogger(CustomerService.class);
 
     private final CustomerService customerService;
     private final RestTemplate restTemplate;
 
-    //@Value("${address-service.service.url}")api-gateway.service.url
-    //private String addressServiceUrl;
+
+    @Value("${keycloak.token-endpoint}")
+    private String tokenEndpoint;
+
+    @Value("${keycloak.client-id}")
+    private String clientId;
+
+    @Value("${keycloak.client-secret-as}")
+    private String clientSecret;
 
     @Value("${api-gateway.service.url}")
     private String apiGatewayServiceUrl;
 
-    @Autowired
     public CustomerController(CustomerService customerService, RestTemplate restTemplate) {
         this.customerService = customerService;
         this.restTemplate = restTemplate;
@@ -44,37 +50,12 @@ public class CustomerController {
 
     @GetMapping()
     public List<Customer> getCustomers() {
-        //logger.info("getCustomers method starts in CustomerController");
         List<Customer> customers = customerService.getAllCustomers();
-        //logger.info("getCustomers collects all customers");
         customers.forEach(customer -> {
-            //logger.info("getCustomers method checking for addresses in address-service");
             List<AddressDTO> addresses = fetchCustomerAddresses(customer.getId());
             customer.setAddresses(addresses);
         });
-        //logger.info("getCustomers method returns the customers information with addresses");
         return customers;
-    }
-
-    @DeleteMapping("/{id}")
-    public ResponseEntity<String> deleteCustomerByCustomerId (@PathVariable Long id) {
-        // Check if customer exists
-        Customer existingCustomer = customerService.getCustomerById(id);
-        if (existingCustomer == null) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Customer not found!");
-        }
-
-        // Delete customer addresses via address-service
-        boolean addressDeletionSuccess = deleteCustomerAddresses(id);
-        if (!addressDeletionSuccess) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("Failed to delete customer addresses from address-service.");
-        }
-
-        // Delete customer from customer-service database
-        customerService.deleteCustomerById(id);
-
-        return ResponseEntity.ok("Customer and related addresses deleted successfully.");
     }
 
     private List<AddressDTO> fetchCustomerAddresses(Long customerId) {
@@ -103,6 +84,27 @@ public class CustomerController {
         return null;
     }
 
+    @DeleteMapping("/{id}")
+    public ResponseEntity<String> deleteCustomerByCustomerId (@PathVariable Long id) {
+        // Check if customer exists
+        Customer existingCustomer = customerService.getCustomerById(id);
+        if (existingCustomer == null) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Customer not found!");
+        }
+
+        // Delete customer addresses via address-service
+        boolean addressDeletionSuccess = deleteCustomerAddresses(id);
+        if (!addressDeletionSuccess) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Failed to delete customer addresses from address-service.");
+        }
+
+        // Delete customer from customer-service database
+        customerService.deleteCustomerById(id);
+
+        return ResponseEntity.ok("Customer and related addresses deleted successfully.");
+    }
+
     // GET http://localhost:8082/customers/<customerID>
     @GetMapping("/{id}")
     public ResponseEntity<?> getCustomerById(@PathVariable Long id) {
@@ -123,12 +125,6 @@ public class CustomerController {
         String tempServiceUrl = apiGatewayServiceUrl + "/customer/" + customerId;
         return restTemplate.getForObject(tempServiceUrl, List.class);
     }
-
-    /***@PostMapping
-    public ResponseEntity<String> addCustomer(@Valid @RequestBody Customer customer) {
-        customerService.addCustomer(customer);
-        return new ResponseEntity<>("Customer added successfully", HttpStatus.CREATED);
-    }**/
 
     // 1. Check if the email exist, if not continue
     // 2. Save the customer first to generate a customerID
